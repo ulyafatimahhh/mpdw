@@ -1,1 +1,7 @@
+#Input Data
+
+```{r}
+data_website <- read.csv("C:/Users/Resea/Documents/Semester 5/MPDW/Website_Page_View.csv")
+head(data_website)
+```
 
