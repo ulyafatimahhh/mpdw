@@ -351,7 +351,7 @@ Model Optimal menunjukkan performa terbaik dengan nilai error terendah pada semu
 
 Model 1 sudah cukup bagus karena performanya sangat mendekati model optimal.
 Selisih error Model 1 dan Model Optimal sangat kecil, sehingga Model 1 dapat dianggap memadai.
-Model 2 secara signifikan lebih buruk dari kedua model lainnya
+Model 2 secara signifikan lebih buruk dari kedua model lainnya.
 
 
 
