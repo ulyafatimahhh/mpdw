@@ -1,1 +1,312 @@
 
+library(dLagM)
+library(dynlm)
+library(MLmetrics)
+library(lmtest)
+library(car)
+
+#INPUT DATA
+```{r}
+# Input Data 
+library(readr)
+data_udara <- read.csv("C:/Users/Resea/Documents/Semester 5/MPDW/NewDelhi_Air_quality.csv")
+data_udara
+```
+
+#PEMILIHAN PEUBAH
+Peubah X yang digunakan untuk pemodelan ini adalah **SO2**. **SO2** merupakan salah satu **polutan utama** dan New Delhi dikenal dengan masalah polusi partikel halus. Menurut **WHO Global Air Quality Guidelines (2021)**, **SO2** sebagai salah satu polutan kriteria utama yang berbahaya bagi kesehatan dan menjadi komponen dalam penilaian kualitas udara secara global. 
+
+```{r}
+# Ambil hanya kolom AQI (Y) dan so2 (X)
+data_model <- data_udara[, c("AQI", "so2")]
+
+# Cek hasil
+data_model
+```
+
+
+#EKSPLORASI DATA
+```{r}
+str(data_model)
+dim(data_model)
+```
+## TIME SERIES PLOT
+```{r}
+data_model.ts <- ts(data_model$so2)
+summary(data_model.ts)
+```
+
+```{r}
+ts.plot(data_model.ts, xlab="SO2", ylab="AQI", 
+        main = "Time Series Plot")
+points(data_model.ts)
+```
+
+## KORELASI
+```{r}
+cor(data_model$so2, data_model$AQI)
+```
+## SCATTER PLOT
+```{r}
+library(ggplot2)
+ggplot(data_model, aes(x = so2 , y = AQI)) +
+  geom_point(color = "blue", size = 3) +
+  labs(title = "Scatter Plot",
+       x = "SO2",
+       y = "AQI")
+```
+#PEMILIHAN DATA
+```{r}
+#SPLIT DATA
+train<-data_model[1:58,]
+test<-data_model[59:72,]
+```
+Pembagian 80% data sebagai training dan 20% sebagai testing dipilih karena penyeimbang antara banyaknya data yang dibutuhkan model untuk belajar pola dan cukupnya data untuk menguji hasil pada kondisi nyata.
+
+
+```{r}
+#data time series
+train.ts<-ts(train)
+test.ts<-ts(test)
+data_model.ts<-ts(data_model)
+```
+
+#PENGECEKAN ASUMSI
+```{r}
+model_awal <- lm(AQI ~ so2, data = data_model)
+summary(model_awal)
+```
+```{r}
+dwtest(model_awal)
+```
+Hasil uji Durbin-Watson menunjukkan nilai DW sebesar 0.20605 dengan p-value kurang dari 2.2e-16 yang berindikasi adanya autokorelasi positif yang sangat kuat pada residual.
+
+
+#PEMODELAN
+```{r}
+#MODEL KOYCK
+model.koyck <- koyckDlm(x = train$so2, y = train$AQI)
+summary(model.koyck)
+AIC(model.koyck)
+BIC(model.koyck)
+```
+
+**Interpretasi Hasil:**
+
+-   Dari `summary`, kita dapatkan model:
+
+    $$ \hat{Y_t}=2.95686-1.22495X_t+0.90249Y_{t-1} $$
+
+    Koefisien $X_t$ (-1.22495) tidak signifikan, artinya nilai \$X\$ saat ini tidak berpengaruh terhadap $Y$.
+
+-   Koefisien $Y_{t−1}$ (0.90249) signifikan. Ini adalah **estimasi untuk** $\lambda$. Nilai ini menunjukkan bahwa terdapat efek keterlambatan (lag effect) yang sangat kuat.
+
+# PERAMALAN DAN AKURASI
+```{r}
+fore.koyck <- forecast(model = model.koyck, x=test$so2, h=14)
+fore.koyck
+mape.koyck <- MAPE(fore.koyck$forecasts, test$AQI)
+mape.koyck #data test
+#akurasi data training
+GoF(model.koyck)
+```
+MAPE = 0.02664587 menunjukkan bahwa rata-rata kesalahan relatif hanya sekitar 2,7%. Dengan MAPE < 10%, model sudah masuk kategori sangat baik (highly accurate).
+MAE yang rendah dan MPE mendekati 0 memperkuat bahwa model ini cukup stabil dan tidak bias.
+
+# MODEL DISTRIBUTED LAG
+
+## PEMODELAN (Lag=2)
+```{r}
+model.dlm <- dlm(x = train$so2, y = train$AQI , q = 2)
+summary(model.dlm)
+AIC(model.dlm)
+BIC(model.dlm)
+```
+
+Dari hasil diatas, didapat bahwa $P-value$ dari intercept dan $x_t<0.05$. Hal ini menunjukkan bahwa intercept dan $x_t$ berpengaruh signifikan terhadap $y$. Adapun model keseluruhan yang terbentuk adalah sebagai berikut
+$$
+\hat{Y_t}=41.150-82.606X_t+77.069X_{t-1}-34.698X_{t-2}
+$$
+## PERAMALAN DAN AKURASI
+```{r}
+fore.dlm <- forecast(model = model.dlm, x=test$so2, h=14)
+fore.dlm
+mape.dlm <- MAPE(fore.dlm$forecasts, test$AQI)
+mape.dlm
+#akurasi data training
+GoF(model.dlm)
+```
+MAPE = 0.049575 menunjukkan bahwa rata-rata kesalahan relatif hanya sekitar 4,9%. Dengan MAPE < 10%, model sudah masuk kategori sangat baik (highly accurate).
+MAE yang rendah dan MPE mendekati 0 memperkuat bahwa model ini cukup stabil dan tidak bias.
+
+## LAG OPTIMUM
+```{r}
+#penentuan lag optimum 
+finiteDLMauto(formula = AQI ~ so2,
+              data = data.frame(train), q.min = 1, q.max = 30,
+              model.type = "dlm", error.type = "AIC", trace = TRUE)
+```
+Berdasarkan hasil tersebut, lag optimum didapatkan ketika lag=27. maka akan dilakukan pemodelan untuk lag=27.
+
+```{r}
+#model dlm dengan lag optimum
+model.dlm2 <- dlm(x = train$so2,y = train$AQI , q = 27)
+summary(model.dlm2)
+AIC(model.dlm2)
+BIC(model.dlm2)
+```
+Dari hasil tersebut tidak ada yang berpengaruh signifikan terhadap taraf nyata 5%. Adapun keseluruhan model yang terbentuk adalah 
+$$
+\hat{Y_t}=17.350-80.822X_t+...+44.684X_{t-27}
+$$
+Peramalan 14 periode kedepan menggunakan model tersebut adalah sebagai berikut
+```{r}
+#peramalan dan akurasi
+fore.dlm2 <- forecast(model = model.dlm2, x=test$so2, h=14)
+
+#akurasi data test
+mape.dlm2<- MAPE(fore.dlm2$forecasts, test$AQI)
+mape.dlm2
+
+#akurasi data training
+GoF(model.dlm2)
+```
+Termasuk model yang sangat baik dengan nilai MAPE yang kurang dari 10%.
+
+#MODEL AUTOREGRESSIVE
+
+## PEMODELAN
+```{r}
+model.ardl <- ardlDlm(x = train$so2, y = train$AQI, p = 1 , q = 1)
+summary(model.ardl)
+AIC(model.ardl)
+BIC(model.ardl)
+```
+```{r}
+model.ardl <- ardlDlm(formula = AQI ~ so2, 
+                         data = train,p = 1 , q = 1)
+summary(model.ardl)
+AIC(model.ardl)
+BIC(model.ardl)
+```
+Hasil di atas menunjukkan bahwa peubah $y_{t-1}$ dan $x_{t-1}$ berpengaruh signifikan terhadap $y_t$, sementara $x_t$ tidak berpengaruh signifikan terhadap $y_t$. Model keseluruhannya adalah sebagai berikut:
+$$
+\hat{Y}=5.71761-29.91226X_t+25.08722X_{t-1}+0.84814Y_{t-1}
+$$
+## PERAMALAN DAN AKURASI
+```{r}
+fore.ardl <- forecast(model = model.ardl, x=test$so2, h=14)
+fore.ardl
+```
+Output tersebut merupakan hasil peramalan untuk 14 periode ke depan menggunakan Model Autoregressive dengan $p=1$ dan $q=1$.
+
+```{r}
+mape.ardl <- MAPE(fore.ardl$forecasts, test$AQI)
+mape.ardl
+#akurasi data training
+GoF(model.ardl)
+```
+Model tersebut termasuk model yang sangat baik dengan nilai MAPE yang kurang dari 10%.
+
+## LAG OPTIMUM
+```{r}
+#penentuan lag optimum
+model.ardl.opt <- ardlBoundOrders(data = data.frame(data_model), ic = "AIC", 
+                                  formula = AQI ~ so2 )
+model.ardl.opt
+min_p=c()
+for(i in 1:15){
+  min_p[i]=min(model.ardl.opt$Stat.table[[i]])
+}
+q_opt=which(min_p==min(min_p, na.rm = TRUE))
+p_opt=which(model.ardl.opt$Stat.table[[q_opt]] == 
+              min(model.ardl.opt$Stat.table[[q_opt]], na.rm = TRUE))
+data.frame("q_optimum" = q_opt, "p_optimum" = p_opt, 
+           "AIC"=model.ardl.opt$min.Stat)
+```
+```{r}
+model.ardl2 <- ardlDlm(formula = AQI ~ so2, 
+                         data = train,p = 14, q = 6)
+summary(model.ardl2)
+```
+Dari tabel di atas, dapat terlihat bahwa nilai AIC terendah didapat ketika $p=5$ dan $q=14$, yaitu sebesar 107.6614. Artinya, model autoregressive optimum didapat ketika $p=5$ dan $q=14$.
+
+
+#PEMODELAN DLM & ARDL DENGAN LIBRARY dynlm
+```{r}
+#sama dengan model dlm q=1
+cons_lm1 <- dynlm(AQI ~ so2+L(so2),data = train.ts)
+#sama dengan model ardl p=1 q=0
+cons_lm2 <- dynlm(AQI ~ so2+L(AQI),data = train.ts)
+#sama dengan ardl p=1 q=1
+cons_lm3 <- dynlm(AQI ~ so2+L(so2)+L(AQI),data = train.ts)
+#sama dengan dlm p=2
+cons_lm4 <- dynlm(AQI ~ so2+L(so2)+L(so2,2),data = train.ts)
+```
+
+## RINGKASAN MODEL
+```{r}
+summary(cons_lm1)
+summary(cons_lm2)
+summary(cons_lm3)
+summary(cons_lm4)
+```
+## SSE
+```{r}
+deviance(cons_lm1)
+deviance(cons_lm2)
+deviance(cons_lm3)
+deviance(cons_lm4)
+```
+
+## UJI DIAGNOSTIK
+```{r}
+if(require("lmtest")) encomptest(cons_lm1, cons_lm2)
+```
+
+### AUTOKORELASI
+```{r}
+dwtest(cons_lm1)
+dwtest(cons_lm2)
+dwtest(cons_lm3)
+dwtest(cons_lm4)
+```
+### HETEROGENITAS
+```{r}
+bptest(cons_lm1)
+bptest(cons_lm2)
+bptest(cons_lm3)
+bptest(cons_lm4)
+```
+```{r}
+shapiro.test(residuals(cons_lm1))
+shapiro.test(residuals(cons_lm2))
+shapiro.test(residuals(cons_lm3))
+shapiro.test(residuals(cons_lm4))
+```
+
+# PERBANDINGAN MODEL
+```{r}
+akurasi <- matrix(c(mape.koyck, mape.dlm, mape.dlm2, mape.ardl))
+row.names(akurasi)<- c("Koyck","DLM 1","DLM 2","Autoregressive")
+colnames(akurasi) <- c("MAPE")
+akurasi
+```
+Berdasarkan nilai MAPE, model paling optimum didapat pada Model Autoregressive karena memiliki nilai MAPE yang terkecil.
+
+# PLOT
+```{r}
+par(mfrow=c(1,1))
+plot(1:length(test$AQI), test$AQI, type="b", col="black", ylim=c(0,50),
+     xlab="Waktu", ylab="AQI")
+
+lines(1:length(test$AQI), fore.koyck$forecasts, col="red")
+lines(1:length(test$AQI), fore.dlm$forecasts, col="blue")
+lines(1:length(test$AQI), fore.dlm2$forecasts, col="orange")
+lines(1:length(test$AQI), fore.ardl$forecasts, col="green")
+
+legend("topleft", c("aktual", "koyck","DLM 1","DLM 2","autoregressive"), 
+       lty=1, col=c("black","red","blue","orange","green"), cex=0.8)
+```
+Hasil plot tersebut, terlihat bahwa plot yang paling mendekati data aktualnya adalah Model Autoregressive maka dapat disimpulkan model terbaik dalam hal ini adalah model Autoregressive.
+
