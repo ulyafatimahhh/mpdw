@@ -1,1 +1,235 @@
+PENGECEKAN STASIONER TUGAS PRAKTIKUM 5
+ULYA FATIMAH NURHALIZAH G1401231024
+
+```{r}
+library(ggplot2)
+library(tsibble)
+library(tseries)
+library(MASS)
+```
+
+### Data
+
+```{r}
+library(rio)
+sales<- import("https://raw.githubusercontent.com/ulyafatimahhh/mpdw/refs/heads/main/Pertemuan%201/Data%20Latihan%20MPDW%20(store%20sales)_Data%20Fix_Kelompok%203.csv")
+data_tugas <- sales[1:100,]
+data.ts <- ts(data_tugas$Total_Sales)
+```
+
+
+### Plot *Time Series*
+
+```{r}
+plot_stas <- data.ts |> as_tsibble() |> 
+  ggplot(aes(x = index, y = value)) + geom_line() + theme_bw() +
+  xlab("Obs") + ylab("Nilai")
+plot_stas
+mean(stas)
+```
+
+```{r}
+lattice::densityplot(as.vector(data.ts))
+```
+
+### Plot ACF
+
+```{r}
+acf(data.ts)
+```
+
+### Uji ADF
+
+```{r}
+tseries::adf.test(data.ts)
+```
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+
+Berdasarkan uji ADF tersebut, didapat *p-value* sebesar 0.01 yang lebih
+kecil dari taraf nyata 5% sehingga tolak $H_0$ dan menandakan bahwa data
+**stasioner dalam rataan**. Hal ini sesuai dengan hasil eksplorasi
+menggunakan plot time series dan plot ACF.
+
+### Plot Box-Cox
+
+```{r}
+index <- seq(1:100)
+
+# Box-Cox
+bc <- boxcox(
+  data.ts ~ index,
+  lambda = seq(-1, 4, by = 0.01)
+)
+
+# Nilai lambda optimum
+lambda <- bc$x[which.max(bc$y)]
+lambda
+
+# Selang kepercayaan 95% untuk lambda
+ci_lambda <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, 1)]
+
+# Batas bawah dan batas atas
+ci_lower <- min(ci_lambda)
+ci_upper <- max(ci_lambda)
+
+c(Batas_Bawah = ci_lower, Batas_Atas = ci_upper)
+```
+
+Hasil uji Box–Cox menunjukkan bahwa nilai λ optimum adalah -1 dengan interval kepercayaan 95% sebesar (-1.0,0.79). Karena selang tersebut tidak memuat nilai λ = 1, maka dapat disimpulkan bahwa data tidak stasioner dalam ragam sehingga diperlukan transformasi.
+
+
+### Transformasi Box-Cox
+
+```{r}
+# Data digeser agar positif
+y_shift <- data.ts - min(data.ts) + 1
+
+# Transformasi Box-Cox dengan lambda ~ 0.5 (akar kuadrat)
+y_bc <- y_shift^0.5
+```
+
+```{r}
+index <- seq(1:100)
+
+# Uji Box-Cox
+bc <- boxcox(
+  y_bc ~ index,
+  lambda = seq(0, 5, by = 0.001)
+)
+
+# Nilai lambda optimum (dibulatkan)
+lambda <- bc$x[which.max(bc$y)]
+lambda
+
+# Selang kepercayaan 95% untuk lambda
+ci_lambda <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, 1)]
+
+# Batas bawah dan batas atas
+ci_lower <- min(ci_lambda)
+ci_upper <- max(ci_lambda)
+
+c(Batas_Bawah = ci_lower, Batas_Atas = ci_upper)
+```
+
+Gambar di atas menunjukkan nilai *rounded value* ($\lambda$) optimum sebesar **1.175** dan pada selang kepercayaan 95% nilai memiliki batas bawah **0.724** dan batas atas **1.655**. Selang tersebut memuat nilai satu sehingga dapat dikatakan bahwa data stasioner dalam ragam.
+
+
+### Partisi Data
+#### Bagian 1
+
+```{r}
+dtgab1 <- data.ts[1:40] |> ts()
+mean(dtgab1)
+var(dtgab1)
+```
+#### Plot Time Series
+
+```{r}
+dtgab1 |> as_tsibble() |> 
+  ggplot(aes(x = index, y = value)) +
+  geom_line() + theme_bw() +
+  xlab("Obs") + ylab("Nilai")
+```
+Berdasarkan plot time series tersebut, terlihat bahwa data cenderung stasioner dalam rataan, ditandain dengan tidak adanya trend dan musiman pada data, serta stasioner dalam ragam, ditandai dengan lebar pita yang cenderung sama pada plot tersebut
+
+
+#### Plot ACF
+
+```{r}
+acf(dtgab1)
+```
+Berdasarkan plot ACF, terlihat bahwa data cenderung stasioner dalam rataan ditandai dengan plot ACF yang *tails off* dan cenderung membentuk gelombang sinus.
+
+#### Uji ADF
+
+```{r}
+adf.test(dtgab1)
+```
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+
+Berdasarkan uji ADF tersebut, didapat *p-value* sebesar 0.01 yang
+kurang dari taraf nyata 5% dan menandakan bahwa data stasioner dalam
+rataan. Hal ini sesuai dengan hasil eksplorasi menggunakan plot time
+series dan plot ACF
+
+
+
+```{r}
+index <- seq(1:40)
+bc = boxcox(dtgab1+25~index, lambda = seq(0,6,by=1))
+#Nilai Rounded Lambda
+lambda <- bc$x[which.max(bc$y)]
+lambda
+#SK
+bc$x[bc$y > max(bc$y) - 1/2 * qchisq(.95,1)]
+```
+
+#### Bagian 2
+
+```{r}
+dtgab2 <- data.ts[60:100] |> ts()
+mean(dtgab2)
+var(dtgab2)
+```
+
+#### Plot Time Series
+
+```{r}
+dtgab2 |> as_tsibble() |> 
+  ggplot(aes(x = index, y = value)) +
+  geom_line() + theme_bw() +
+  xlab("Obs") + ylab("Nilai")
+```
+
+Berdasarkan plot time series tersebut, terlihat bahwa data cenderung stasioner dalam rataan, ditandain dengan tidak adanya trend dan musiman pada data, serta stasioner dalam ragam, ditandai dengan lebar pita yang cenderung sama pada plot tersebut.
+
+#### Plot ACF
+
+```{r}
+acf(dtgab2)
+```
+
+Berdasarkan plot ACF tersebut, terlihat bahwa data stasioner dalam
+rataan ditandai dengan plot ACF yang *cuts off* pada lag ke 10
+
+#### Uji ADF
+
+```{r}
+adf.test(dtgab2)
+```
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+
+Berdasarkan uji ADF tersebut, didapat *p-value* sebesar 0.01866 yang
+kurang dari taraf nyata 5% dan menandakan bahwa data stasioner dalam
+rataan. Hal ini sesuai dengan hasil eksplorasi menggunakan plot time
+series dan plot ACF
+
+```{r}
+index <- seq(60:100)
+
+# Uji Box-Cox
+bc <- boxcox(
+  dtgab2 +15 ~ index,
+  lambda = seq(-2, 5, by = 0.001)
+)
+
+# Nilai lambda optimum (dibulatkan)
+lambda <- bc$x[which.max(bc$y)]
+lambda
+
+# Selang kepercayaan 95% untuk lambda
+ci_lambda <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, 1)]
+
+# Batas bawah dan batas atas
+ci_lower <- min(ci_lambda)
+ci_upper <- max(ci_lambda)
+
+c(Batas_Bawah = ci_lower, Batas_Atas = ci_upper)
+```
 
